@@ -1,0 +1,60 @@
+<comment:note value="Start Feature advanced"/>
+<comment:note value="Pass through Immutable attribute of Cache-Control and Edge-Control"/>
+<comment:note value="Author: cpinotos@akamai.com"/>
+<comment:note value="Version: 1.0"/>
+<comment:note value="Description: Modify Cache-Control Header, add the immutable attribute in case the origin did send it as part of the Edge-Control or Cache-Control header."/>
+<match:request.type value="CLIENT_REQ">
+    <match:metadata-stage value="client-request">
+      <comment:note value="Need to ensure that we add the Origin headers into the cache store object in case of 304."/>
+     <cache:header-update.allow>on</cache:header-update.allow>
+   </match:metadata-stage>
+    <match:metadata-stage value="forward-response">
+      <comment:note value="Only need to add the Is-Immutable to the cache store object when talking to the Origin. Edge to parent will pick it up without the need to add it manually like done between Parent and Origin."/>
+      <match:forward.server-type value="CUSTOMER_ORIGIN">
+        <match:response.header value-case="off" value-wildcard="on" name-wildcard="off" value="*immutable*" result="true" name="Cache-Control">
+            <comment:note value="CC_IMMUTABLE_STATE is just there to help to debug."/>
+            <assign:variable>
+                <name>CC_IMMUTABLE_STATE</name>
+                <value>cc</value>
+                <hidden>off</hidden>
+                <sensitive>off</sensitive>
+            </assign:variable>
+            <edgeservices:modify-incoming-response.add-header>
+              <status>on</status>
+              <name>Is-Immutable</name>
+              <value>cc</value>
+            </edgeservices:modify-incoming-response.add-header>
+        </match:response.header>
+        <match:response.header value-case="off" value-wildcard="on" name-wildcard="off" value="*immutable*" result="true" name="Edge-Control">
+            <assign:variable>
+                <name>CC_IMMUTABLE_STATE</name>
+                <value>ec</value>
+                <hidden>off</hidden>
+                <sensitive>off</sensitive>
+            </assign:variable>
+            <comment:note value="In case the origin did send edge-control header we need to remove the current setting and add a new one."/>
+            <edgeservices:modify-incoming-response.remove-header>
+              <status>on</status>
+              <name>Is-Immutable</name>
+            </edgeservices:modify-incoming-response.remove-header>
+            <edgeservices:modify-incoming-response.add-header>
+              <status>on</status>
+              <name>Is-Immutable</name>
+              <value>ec</value>
+            </edgeservices:modify-incoming-response.add-header>
+        </match:response.header>
+      </match:forward.server-type>
+    </match:metadata-stage>
+    <match:metadata-stage value="client-response">
+      <comment:note value="This header should exist in the cache store object header section if the origin did provide the immutable attribute as part of the cache-control or edge-control header."/>
+      <match:response.header name="Is-Immutable" value="cc ec">
+        <comment:note value="Add the immutable attribute which normaly would have been stripped out by our downstream-ttl settings."/>
+        <edgeservices:modify-outgoing-response.regexp-header>
+            <status>on</status>
+            <name>Cache-Control</name>
+            <value>#(.*)#$1, immutable#ig</value>
+            <edge-only>on</edge-only>
+        </edgeservices:modify-outgoing-response.regexp-header>
+      </match:response.header>
+    </match:metadata-stage>
+</match:request.type>
